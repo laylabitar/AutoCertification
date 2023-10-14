@@ -1,0 +1,149 @@
+
+
+function sheetToSlide(name, EntryNo) {
+    var currentDate = new Date();
+    var currentMonth = currentDate.getMonth();
+    var currentMonth = currentMonth + 1
+    var currentMonth = currentMonth.toString()
+    var currentYear = currentDate.getFullYear().toString();
+    Logger.log(currentMonth)
+    var last2year = currentYear.substring(2)
+    var formattedDate = Utilities.formatDate(currentDate, Session.getScriptTimeZone(), "yyyy-MM-dd");
+    var dateParts = formattedDate.split('-'); // Split the formatted date into year, month, and day
+    var year = parseInt(dateParts[0]); // Extract the year
+    var month = parseInt(dateParts[1]) - 1; // Extract the month (Note: months are zero-indexed in JavaScript)
+    var day = parseInt(dateParts[2]); // Extract the day
+    var futureDate = new Date(year + 3, month, day); // Add three years to the date
+    var formattedFutureDate = Utilities.formatDate(futureDate, Session.getScriptTimeZone(), "yyyy-MM-dd");
+    var serialNo = last2year+"_"+currentMonth+"_"+EntryNo.toString();
+    var presentation = SlidesApp.openById('1YWvT12Lm3WLJwv34UGBnK7_P8FwtRKiR3yhyl4T1hGM')
+    var slideTemplate = presentation.getSlideById('p'); //ID for certificate template
+    //Logger.log(slideTemplate);
+    var newSlide = slideTemplate.duplicate();
+    var newSlideID = newSlide.getObjectId();
+    var shapes = presentation.getSlideById(newSlideID).getShapes();
+    shapes.forEach(function (shape) {
+      shape.getText().replaceAllText('{{name}}', name);
+      shape.getText().replaceAllText('{{serial no}}', serialNo);
+      shape.getText().replaceAllText('{{cert date}}', formattedDate);
+      shape.getText().replaceAllText('{{exp date}}',formattedFutureDate);
+    });
+    var numberOfSlides = presentation.getSlides().length;
+    newSlide.move(numberOfSlides); // last row = last slide
+    presentation.saveAndClose(); 
+
+}
+
+
+
+function createPNG(name) {
+    var presentation = SlidesApp.openById('1YWvT12Lm3WLJwv34UGBnK7_P8FwtRKiR3yhyl4T1hGM')
+    var presentationId = presentation.getId();
+    var parameters = {
+      method: "GET",
+      headers: { Authorization: "Bearer " + ScriptApp.getOAuthToken() },
+      contentType: "application/json",
+    };
+    var slides = presentation.getSlides();
+    var lastSlide = slides[slides.length-1];
+    var slideId = lastSlide.getObjectId();
+    var url = "https://slides.googleapis.com/v1/presentations/" + presentationId + "/pages/" + slideId + "/thumbnail";
+    len = slides.length
+    var response = JSON.parse(UrlFetchApp.fetch(url, parameters)); // sending message to web server to perform that actions resulting in an HTTPResponse object
+    var blob = UrlFetchApp.fetch(response.contentUrl, parameters).getBlob(); // fetch image thumbnail and then blob is used to convert it into binary data
+    var image = DriveApp.createFile(blob).setName(name + ".png"); //file name for each slide
+    var imageId = image.getId();
+    var folder = DriveApp.getFolderById('1LCNf9-YK6aioWJLDcjefeX5yb8EsNCR_') 
+    DriveApp.getFileById(imageId).moveTo(folder);
+
+
+}
+
+function emailGoogleDoc(name, email, attachment) {
+  var id = '1q9ijeu3C_yPLOJMEIB9QuS2iqOMYNFkBuim_fy6qDtI'; //id of google doc
+  var url = "https://docs.google.com/feeds/download/documents/export/Export?id=" + id + "&exportFormat=html"; //requesting to fetch this url
+  // the above is creating a url to download the google doc file in html format
+  var parameters2 = {
+    method: "GET",  // ask server for info 
+    headers: { Authorization: "Bearer " + ScriptApp.getOAuthToken() }, // to make sure that program has permission to access the info
+  };
+  let html = UrlFetchApp.fetch(url, parameters2).getContentText(); // to get in the html format from the google doc
+  var subject = name + "'s HRPP Certificate"; // addint the email subject
+  //sendEmail(name, email, attachment)
+  Logger.log(email)
+  GmailApp.sendEmail(email, subject, '', {
+    htmlBody: html,
+    attachments: [attachment]
+  });
+  Logger.log(email)
+}
+
+
+function sendEmailCert(name,email) {  
+
+      const folder = DriveApp.getFolderById('1LCNf9-YK6aioWJLDcjefeX5yb8EsNCR_'); // folder that has the certificates
+      let attachment = folder.getFilesByName(name + '.png').next().getBlob();
+      emailGoogleDoc(name, email, attachment);
+
+    }
+
+
+
+
+function createOnFormSubmitTrigger() {
+  ScriptApp.newTrigger('sendEmailOnFormSubmit')
+    .forSpreadsheet("1TqOkKo0Z5ZugEMwBYHcrpTPrXXmpCME2wg9mcUxG_dQ")
+    .onFormSubmit()
+    .create();
+  
+}
+
+
+function sendEmailOnFormSubmit(e) {
+  const lock = LockService.getScriptLock();
+  lock.tryLock(60000)
+  if (lock.hasLock()){
+    try{
+      const ss = SpreadsheetApp.openById('1TqOkKo0Z5ZugEMwBYHcrpTPrXXmpCME2wg9mcUxG_dQ'); // Access the sheet
+      const sheet = ss.getSheetByName('Form Responses 1');
+      const lastRow = sheet.getLastRow();
+      const rowRange = sheet.getRange(lastRow, 1, 1, sheet.getLastColumn());
+      const rowData = rowRange.getValues()[0];
+      let name = rowData[3]; // from google sheets
+      let email = rowData[1];
+      let score = rowData[2]; // score column, assuming it's the 7th column (index 6)
+      var rowBeforeLast = lastRow-1;
+      const rowBeforeLastData = sheet.getRange(rowBeforeLast, 1, 1, sheet.getLastColumn()).getValues()[0];
+      PEntryNo = rowBeforeLastData[24]
+      
+      if (score >= 17) {
+        const EntryNo = PEntryNo + 1
+        sheet.getRange(lastRow, 25).setValue(EntryNo);
+        sheetToSlide(name, EntryNo);
+        createPNG(name);
+        sendEmailCert(name,email)
+      }else {
+        sheet.getRange(lastRow, 25).setValue(PEntryNo);
+        let subject = "HRPP Certificate";
+        let message = "Dear " + name + ",\n\nWe regret to inform you that you did not pass the exam and therefore a certificate cannot be issued.\n\nRegards,\nScientific Affairs & Research Office";
+        GmailApp.sendEmail(email, subject, message);
+      }
+    }
+
+    catch(e){
+      Logger.log('it did not work')
+
+    } 
+
+    finally{
+      lock.releaseLock();
+    }
+    
+        
+  }
+  
+}
+
+
+
+
