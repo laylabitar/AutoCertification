@@ -1,26 +1,38 @@
 
 
-function sheetToSlide(name, EntryNo) {
+function sheetToSlide(name, EntryNo) {  // function that takes the last submission entered into google sheets and creates its own certificate
+
+    // get the date at the time of submission
     var currentDate = new Date();
-    var currentMonth = currentDate.getMonth();
-    var currentMonth = currentMonth + 1
-    var currentMonth = currentMonth.toString()
+    var currentMonth = (currentDate.getMonth() + 1).toString();
     var currentYear = currentDate.getFullYear().toString();
-    Logger.log(currentMonth)
-    var last2year = currentYear.substring(2)
+
+    // set the desired format for the date
     var formattedDate = Utilities.formatDate(currentDate, Session.getScriptTimeZone(), "yyyy-MM-dd");
-    var dateParts = formattedDate.split('-'); // Split the formatted date into year, month, and day
+
+    // set the expiration date of certification from time of submission
+    // split the formatted date into year, month, and day
+    var dateParts = formattedDate.split('-'); 
     var year = parseInt(dateParts[0]); // Extract the year
     var month = parseInt(dateParts[1]) - 1; // Extract the month (Note: months are zero-indexed in JavaScript)
     var day = parseInt(dateParts[2]); // Extract the day
+    // setting to a three year's expiration
     var futureDate = new Date(year + 3, month, day); // Add three years to the date
     var formattedFutureDate = Utilities.formatDate(futureDate, Session.getScriptTimeZone(), "yyyy-MM-dd");
+
+    // setting the serial number of each individual certificate
+    var last2year = currentYear.substring(2)
     var serialNo = last2year+"_"+currentMonth+"_"+EntryNo.toString();
-    var presentation = SlidesApp.openById('1YWvT12Lm3WLJwv34UGBnK7_P8FwtRKiR3yhyl4T1hGM')
-    var slideTemplate = presentation.getSlideById('p'); //ID for certificate template
-    //Logger.log(slideTemplate);
-    var newSlide = slideTemplate.duplicate();
-    var newSlideID = newSlide.getObjectId();
+
+    // open up the slides by the ID and create the certificate for the new passing submission
+    var presentation = SlidesApp.openById('ADD ID HERE FROM YOUR URL')
+    var slideTemplate = presentation.getSlideById('ADD ID HERE'); //ID for certificate template slide
+    var newSlide = slideTemplate.duplicate(); // duplicate the template
+    var newSlideID = newSlide.getObjectId(); // get the ID of the duplicate
+
+    //This code fetches all the shapes on a new slide, then for each shape, it replaces specific placeholders like '{{name}}' with name,
+     '{{serial no}}' with serialNo, '{{cert date}}' with formattedDate, and '{{exp date}}' with formattedFutureDate.
+
     var shapes = presentation.getSlideById(newSlideID).getShapes();
     shapes.forEach(function (shape) {
       shape.getText().replaceAllText('{{name}}', name);
@@ -31,36 +43,36 @@ function sheetToSlide(name, EntryNo) {
     var numberOfSlides = presentation.getSlides().length;
     newSlide.move(numberOfSlides); // last row = last slide
     presentation.saveAndClose(); 
-
 }
 
 
 
-function createPNG(name) {
-    var presentation = SlidesApp.openById('1YWvT12Lm3WLJwv34UGBnK7_P8FwtRKiR3yhyl4T1hGM')
+function createPNG(name) {  //function to create a png from last slide
+    var presentation = SlidesApp.openById('ADD ID HERE')
     var presentationId = presentation.getId();
+    // setting the parameters to make an HTTP GET request
     var parameters = {
       method: "GET",
       headers: { Authorization: "Bearer " + ScriptApp.getOAuthToken() },
       contentType: "application/json",
     };
+
+    // retrieve the last slide and constructs a URL to request a thumbnail image of the last slide. 
     var slides = presentation.getSlides();
     var lastSlide = slides[slides.length-1];
     var slideId = lastSlide.getObjectId();
     var url = "https://slides.googleapis.com/v1/presentations/" + presentationId + "/pages/" + slideId + "/thumbnail";
-    len = slides.length
     var response = JSON.parse(UrlFetchApp.fetch(url, parameters)); // sending message to web server to perform that actions resulting in an HTTPResponse object
     var blob = UrlFetchApp.fetch(response.contentUrl, parameters).getBlob(); // fetch image thumbnail and then blob is used to convert it into binary data
     var image = DriveApp.createFile(blob).setName(name + ".png"); //file name for each slide
     var imageId = image.getId();
-    var folder = DriveApp.getFolderById('1LCNf9-YK6aioWJLDcjefeX5yb8EsNCR_') 
+    var folder = DriveApp.getFolderById('ADD FOLDER ID HERE') 
     DriveApp.getFileById(imageId).moveTo(folder);
-
-
 }
 
-function emailGoogleDoc(name, email, attachment) {
-  var id = '1q9ijeu3C_yPLOJMEIB9QuS2iqOMYNFkBuim_fy6qDtI'; //id of google doc
+
+function emailGoogleDoc(name, email, attachment) { //function to send email attached with the certification
+  var id = 'ADD ID HERE'; //id of google doc containing email body template
   var url = "https://docs.google.com/feeds/download/documents/export/Export?id=" + id + "&exportFormat=html"; //requesting to fetch this url
   // the above is creating a url to download the google doc file in html format
   var parameters2 = {
@@ -68,21 +80,19 @@ function emailGoogleDoc(name, email, attachment) {
     headers: { Authorization: "Bearer " + ScriptApp.getOAuthToken() }, // to make sure that program has permission to access the info
   };
   let html = UrlFetchApp.fetch(url, parameters2).getContentText(); // to get in the html format from the google doc
-  var subject = name + "'s HRPP Certificate"; // addint the email subject
-  //sendEmail(name, email, attachment)
-  Logger.log(email)
+  var subject = name + "'s HRPP Certificate"; // adding the email subject with applicant's name
+
   GmailApp.sendEmail(email, subject, '', {
     htmlBody: html,
     attachments: [attachment]
   });
-  Logger.log(email)
 }
 
 
-function sendEmailCert(name,email) {  
+function sendEmailCert(name,email) {  //function to access the certification
 
-      const folder = DriveApp.getFolderById('1LCNf9-YK6aioWJLDcjefeX5yb8EsNCR_'); // folder that has the certificates
-      let attachment = folder.getFilesByName(name + '.png').next().getBlob();
+      const folder = DriveApp.getFolderById('ADD FOLDER ID HERE'); // folder that has the certificates
+      let attachment = folder.getFilesByName(name + '.png').next().getBlob(); //retrieves the file with the specific name in a binary format
       emailGoogleDoc(name, email, attachment);
 
     }
@@ -91,7 +101,7 @@ function sendEmailCert(name,email) {
 
 
 function createOnFormSubmitTrigger() {
-  ScriptApp.newTrigger('sendEmailOnFormSubmit')
+  ScriptApp.newTrigger('sendEmailOnFormSubmit') // function triggered at form submission
     .forSpreadsheet("1TqOkKo0Z5ZugEMwBYHcrpTPrXXmpCME2wg9mcUxG_dQ")
     .onFormSubmit()
     .create();
@@ -104,24 +114,27 @@ function sendEmailOnFormSubmit(e) {
   lock.tryLock(60000)
   if (lock.hasLock()){
     try{
-      const ss = SpreadsheetApp.openById('1TqOkKo0Z5ZugEMwBYHcrpTPrXXmpCME2wg9mcUxG_dQ'); // Access the sheet
-      const sheet = ss.getSheetByName('Form Responses 1');
+      const ss = SpreadsheetApp.openById('ADD ID HERE'); // Access the sheet
+      const sheet = ss.getSheetByName('ADD SHEET NAME');
       const lastRow = sheet.getLastRow();
       const rowRange = sheet.getRange(lastRow, 1, 1, sheet.getLastColumn());
       const rowData = rowRange.getValues()[0];
       let name = rowData[3]; // from google sheets
       let email = rowData[1];
       let score = rowData[2]; // score column, assuming it's the 7th column (index 6)
+
+    // this is getting an extra column that has entry no. on google sheet ( this is used for the serial number *optional)
       var rowBeforeLast = lastRow-1;
       const rowBeforeLastData = sheet.getRange(rowBeforeLast, 1, 1, sheet.getLastColumn()).getValues()[0];
       PEntryNo = rowBeforeLastData[24]
-      
+
+      // set the passing score here
       if (score >= 17) {
         const EntryNo = PEntryNo + 1
         sheet.getRange(lastRow, 25).setValue(EntryNo);
-        sheetToSlide(name, EntryNo);
-        createPNG(name);
-        sendEmailCert(name,email)
+        sheetToSlide(name, EntryNo);  //create a slide with the certification
+        createPNG(name);  // save certification to png
+        sendEmailCert(name,email)  // send email with certification attached
       }else {
         sheet.getRange(lastRow, 25).setValue(PEntryNo);
         let subject = "HRPP Certificate";
@@ -137,11 +150,8 @@ function sendEmailOnFormSubmit(e) {
 
     finally{
       lock.releaseLock();
-    }
-    
-        
-  }
-  
+    }        
+  }  
 }
 
 
